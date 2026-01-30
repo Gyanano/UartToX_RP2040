@@ -1,0 +1,40 @@
+; UART RX PIO 程序
+; 8N1 格式
+
+.program uart_rx
+
+.wrap_target
+start:
+    wait 0 pin 0
+    set x, 7            [10]
+bitloop:
+    in pins, 1
+    jmp x-- bitloop     [6]
+    jmp pin good_stop
+    jmp start
+good_stop:
+    push block
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+
+static inline void uart_rx_program_init(PIO pio, uint sm, uint offset,
+                                         uint pin_rx, uint baud) {
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_rx, 1, false);
+    pio_gpio_init(pio, pin_rx);
+    gpio_pull_up(pin_rx);
+
+    pio_sm_config c = uart_rx_program_get_default_config(offset);
+    sm_config_set_in_pins(&c, pin_rx);
+    sm_config_set_jmp_pin(&c, pin_rx);
+    sm_config_set_in_shift(&c, true, true, 8);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+
+    float div = (float)clock_get_hz(clk_sys) / (baud * 8);
+    sm_config_set_clkdiv(&c, div);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

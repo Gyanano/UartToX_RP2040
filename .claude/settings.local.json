@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where:*)",
+      "Bash(cmake:*)",
+      "Bash(arm-none-eabi-gcc:*)"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+; I2C PIO 程序 - 简化版
+; 使用硬件 I2C 替代，此文件仅作为占位符
+
+.program i2c
+
+; 简化的 I2C 时钟生成（实际使用硬件 I2C）
+.wrap_target
+    nop
+.wrap
+
+% c-sdk {
+// 使用硬件 I2C，不需要 PIO 初始化
+static inline void i2c_program_init(PIO pio, uint sm, uint offset,
+                                     uint sda_pin, uint scl_pin,
+                                     uint freq) {
+    (void)pio; (void)sm; (void)offset;
+    (void)sda_pin; (void)scl_pin; (void)freq;
+}
+%}
