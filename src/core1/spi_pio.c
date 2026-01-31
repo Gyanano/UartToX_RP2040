@@ -13,16 +13,23 @@ static uint8_t current_cs_pin = PIN_SPI_CS0;
  * 初始化 SPI
  */
 void spi_pio_init(void) {
-    // 初始化 CS 引脚
-    gpio_init(PIN_SPI_CS0);
-    gpio_init(PIN_SPI_CS1);
-    gpio_init(PIN_SPI_CS2);
-    gpio_set_dir(PIN_SPI_CS0, GPIO_OUT);
-    gpio_set_dir(PIN_SPI_CS1, GPIO_OUT);
-    gpio_set_dir(PIN_SPI_CS2, GPIO_OUT);
-    gpio_put(PIN_SPI_CS0, 1);
-    gpio_put(PIN_SPI_CS1, 1);
-    gpio_put(PIN_SPI_CS2, 1);
+    // 如果已初始化，先反初始化
+    if (spi_initialized) {
+        spi_deinit(spi_inst);
+    }
+
+    // 初始化 CS 引脚 (只做一次)
+    if (!spi_initialized) {
+        gpio_init(PIN_SPI_CS0);
+        gpio_init(PIN_SPI_CS1);
+        gpio_init(PIN_SPI_CS2);
+        gpio_set_dir(PIN_SPI_CS0, GPIO_OUT);
+        gpio_set_dir(PIN_SPI_CS1, GPIO_OUT);
+        gpio_set_dir(PIN_SPI_CS2, GPIO_OUT);
+        gpio_put(PIN_SPI_CS0, 1);
+        gpio_put(PIN_SPI_CS1, 1);
+        gpio_put(PIN_SPI_CS2, 1);
+    }
 
     // 初始化 SPI
     spi_init(spi_inst, g_state.spi.speed_khz * 1000);

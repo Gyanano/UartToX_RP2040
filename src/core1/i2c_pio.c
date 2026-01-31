@@ -7,28 +7,42 @@
 
 static i2c_inst_t *i2c_inst = i2c0;
 static bool i2c_initialized = false;
+static uint8_t current_port = 0;
+static uint current_sda_pin = PIN_I2C0_SDA;
+static uint current_scl_pin = PIN_I2C0_SCL;
 
 /**
  * 初始化 I2C
  */
 void i2c_pio_init(void) {
-    // 根据端口选择 I2C 实例
-    i2c_inst = (g_state.i2c.port == 0) ? i2c0 : i2c1;
+    // 如果已初始化，先反初始化
+    if (i2c_initialized) {
+        i2c_deinit(i2c_inst);
+        // 重置旧引脚为普通 GPIO
+        gpio_set_function(current_sda_pin, GPIO_FUNC_NULL);
+        gpio_set_function(current_scl_pin, GPIO_FUNC_NULL);
+        gpio_disable_pulls(current_sda_pin);
+        gpio_disable_pulls(current_scl_pin);
+    }
 
-    uint sda_pin = (g_state.i2c.port == 0) ? PIN_I2C0_SDA : PIN_I2C1_SDA;
-    uint scl_pin = (g_state.i2c.port == 0) ? PIN_I2C0_SCL : PIN_I2C1_SCL;
+    // 根据端口选择 I2C 实例
+    current_port = g_state.i2c.port;
+    i2c_inst = (current_port == 0) ? i2c0 : i2c1;
+
+    current_sda_pin = (current_port == 0) ? PIN_I2C0_SDA : PIN_I2C1_SDA;
+    current_scl_pin = (current_port == 0) ? PIN_I2C0_SCL : PIN_I2C1_SCL;
 
     // 初始化 I2C
     i2c_init(i2c_inst, g_state.i2c.speed_khz * 1000);
 
     // 配置 GPIO
-    gpio_set_function(sda_pin, GPIO_FUNC_I2C);
-    gpio_set_function(scl_pin, GPIO_FUNC_I2C);
+    gpio_set_function(current_sda_pin, GPIO_FUNC_I2C);
+    gpio_set_function(current_scl_pin, GPIO_FUNC_I2C);
 
     // 上拉电阻
     if (g_state.i2c.pullup) {
-        gpio_pull_up(sda_pin);
-        gpio_pull_up(scl_pin);
+        gpio_pull_up(current_sda_pin);
+        gpio_pull_up(current_scl_pin);
     }
 
     i2c_initialized = true;

@@ -121,6 +121,12 @@ static void handle_i2c_cmd(const ipc_cmd_t *cmd) {
             break;
         }
 
+        case IPC_CMD_CONFIG: {
+            // 重新初始化 I2C (配置已由 Core0 更新到 g_state)
+            i2c_pio_init();
+            break;
+        }
+
         default:
             resp.status = ERR_UNKNOWN_CMD;
             break;
@@ -180,6 +186,12 @@ static void handle_spi_cmd(const ipc_cmd_t *cmd) {
             break;
         }
 
+        case IPC_CMD_CONFIG: {
+            // 重新初始化 SPI (配置已由 Core0 更新到 g_state)
+            spi_pio_init();
+            break;
+        }
+
         default:
             resp.status = ERR_UNKNOWN_CMD;
             break;
@@ -214,6 +226,25 @@ static void handle_uart_cmd(const ipc_cmd_t *cmd) {
             } else {
                 resp.data_len = ret;
             }
+            break;
+        }
+
+        case IPC_CMD_UART_STREAM_TX: {
+            int ret = uart_pio_send(g_shared_tx_buf, cmd->data_len);
+            if (ret < 0) {
+                resp.status = ERR_TIMEOUT;
+            }
+            break;
+        }
+
+        case IPC_CMD_UART_STREAM_RX: {
+            int count = 0;
+            while (count < DATA_BUFFER_SIZE) {
+                int byte = uart_pio_recv_byte();
+                if (byte < 0) break;
+                g_shared_rx_buf[count++] = (uint8_t)byte;
+            }
+            resp.data_len = count;
             break;
         }
 

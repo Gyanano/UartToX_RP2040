@@ -4,6 +4,8 @@
 
 #include "../include/uart_to_x.h"
 #include "hardware/clocks.h"
+#include "hardware/watchdog.h"
+#include "pico/bootrom.h"
 #include <stdlib.h>
 #include <ctype.h>
 
@@ -31,6 +33,7 @@ typedef struct {
 static void cmd_help(int argc, char *argv[]);
 static void cmd_info(int argc, char *argv[]);
 static void cmd_reset(int argc, char *argv[]);
+static void cmd_bootsel(int argc, char *argv[]);
 static void cmd_mode(int argc, char *argv[]);
 static void cmd_i2c(int argc, char *argv[]);
 static void cmd_spi(int argc, char *argv[]);
@@ -42,6 +45,7 @@ static const cmd_entry_t commands[] = {
     {"help",    "Show help information",        cmd_help},
     {"info",    "Show system information",      cmd_info},
     {"reset",   "Reset system",                 cmd_reset},
+    {"bootsel", "Enter BOOTSEL mode for flash", cmd_bootsel},
     {"mode",    "Set transfer mode",            cmd_mode},
     {"i2c",     "I2C operations",               cmd_i2c},
     {"spi",     "SPI operations",               cmd_spi},
@@ -237,7 +241,15 @@ static void cmd_reset(int argc, char *argv[]) {
     }
     printf("Resetting...\r\n");
     sleep_ms(100);
-    // watchdog_reboot(0, 0, 0);
+    watchdog_reboot(0, 0, 0);
+}
+
+static void cmd_bootsel(int argc, char *argv[]) {
+    (void)argc; (void)argv;
+    printf("Entering BOOTSEL mode...\r\n");
+    printf("Device will appear as USB drive.\r\n");
+    sleep_ms(100);
+    reset_usb_boot(0, 0);
 }
 
 static void cmd_mode(int argc, char *argv[]) {
@@ -282,15 +294,31 @@ static void cmd_i2c(int argc, char *argv[]) {
                 g_state.i2c.pullup ? "ON" : "OFF");
             return;
         }
+        bool config_changed = false;
         if (strcmp(argv[2], "speed") == 0 && argc > 3) {
             g_state.i2c.speed_khz = parse_number(argv[3]);
             printf("OK I2C speed set to %lu kHz\r\n", g_state.i2c.speed_khz);
+            config_changed = true;
         } else if (strcmp(argv[2], "port") == 0 && argc > 3) {
             g_state.i2c.port = parse_number(argv[3]) & 1;
             printf("OK I2C port set to %d\r\n", g_state.i2c.port);
+            config_changed = true;
         } else if (strcmp(argv[2], "pullup") == 0 && argc > 3) {
             g_state.i2c.pullup = strcmp(argv[3], "on") == 0;
             printf("OK Pullup %s\r\n", g_state.i2c.pullup ? "enabled" : "disabled");
+            config_changed = true;
+        }
+        // 配置改变时重新初始化 I2C 硬件
+        if (config_changed) {
+            ipc_cmd_t cmd = {
+                .cmd = IPC_CMD_CONFIG,
+                .protocol = PROTO_I2C,
+                .data_len = 0,
+                .param = 0
+            };
+            fifo_ipc_send_cmd(&cmd);
+            ipc_resp_t resp;
+            fifo_ipc_recv_resp(&resp);
         }
     }
     else if (strcmp(subcmd, "scan") == 0) {
@@ -326,9 +354,8 @@ static void cmd_i2c(int argc, char *argv[]) {
             .cmd = IPC_CMD_I2C_READ,
             .protocol = PROTO_I2C,
             .data_len = 0,
-            .param = addr
+            .param = (addr << 16) | 1  // 地址左移16位，读取1字节
         };
-        g_shared_tx_buf[0] = 1;  // 读取1字节
         fifo_ipc_send_cmd(&cmd);
 
         ipc_resp_t resp;
@@ -395,7 +422,7 @@ static void cmd_i2c(int argc, char *argv[]) {
             .cmd = IPC_CMD_I2C_WRITE,
             .protocol = PROTO_I2C,
             .data_len = data_len,
-            .param = addr
+            .param = (addr << 16)
         };
         fifo_ipc_send_cmd(&cmd);
 
@@ -452,6 +479,47 @@ static void cmd_i2c(int argc, char *argv[]) {
         }
         mutex_exit(&g_shared_buf_mutex);
     }
+    else if (strcmp(subcmd, "dump") == 0) {
+        // i2c dump <addr> [start_reg] [len]
+        if (argc < 3) {
+            printf("Usage: i2c dump <addr> [start_reg] [len]\r\n");
+            return;
+        }
+        uint8_t addr = parse_number(argv[2]);
+        uint8_t start_reg = (argc > 3) ? parse_number(argv[3]) : 0;
+        uint16_t len = (argc > 4) ? parse_number(argv[4]) : 256;
+
+        printf("     0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\r\n");
+
+        mutex_enter_blocking(&g_shared_buf_mutex);
+        for (int row = 0; row < 16 && (row * 16) < len; row++) {
+            printf("%02X: ", start_reg + row * 16);
+            for (int col = 0; col < 16; col++) {
+                uint8_t reg = start_reg + row * 16 + col;
+                if ((row * 16 + col) >= len) {
+                    printf("   ");
+                    continue;
+                }
+                g_shared_tx_buf[0] = reg;
+                ipc_cmd_t cmd = {
+                    .cmd = IPC_CMD_I2C_TRANSFER,
+                    .protocol = PROTO_I2C,
+                    .data_len = 1,
+                    .param = (addr << 16) | 1
+                };
+                fifo_ipc_send_cmd(&cmd);
+
+                ipc_resp_t resp;
+                if (fifo_ipc_recv_resp(&resp) && resp.status == ERR_OK) {
+                    printf("%02X ", g_shared_rx_buf[0]);
+                } else {
+                    printf("-- ");
+                }
+            }
+            printf("\r\n");
+        }
+        mutex_exit(&g_shared_buf_mutex);
+    }
     else {
         printf("ERR E02 Unknown I2C subcommand: %s\r\n", subcmd);
     }
@@ -463,7 +531,7 @@ static void cmd_i2c(int argc, char *argv[]) {
 
 static void cmd_spi(int argc, char *argv[]) {
     if (argc < 2) {
-        printf("SPI subcommands: config, transfer, write, read, flash\r\n");
+        printf("SPI subcommands: config, transfer, write, read\r\n");
         return;
     }
 
@@ -479,12 +547,15 @@ static void cmd_spi(int argc, char *argv[]) {
                 g_state.spi.lsb_first ? "LSB" : "MSB");
             return;
         }
+        bool config_changed = false;
         if (strcmp(argv[2], "speed") == 0 && argc > 3) {
             g_state.spi.speed_khz = parse_number(argv[3]);
             printf("OK SPI speed set to %lu kHz\r\n", g_state.spi.speed_khz);
+            config_changed = true;
         } else if (strcmp(argv[2], "mode") == 0 && argc > 3) {
             g_state.spi.mode = parse_number(argv[3]) & 0x03;
             printf("OK SPI mode set to %d\r\n", g_state.spi.mode);
+            config_changed = true;
         } else if (strcmp(argv[2], "cs") == 0 && argc > 3) {
             uint8_t cs = parse_number(argv[3]);
             switch (cs) {
@@ -494,6 +565,19 @@ static void cmd_spi(int argc, char *argv[]) {
                 default: printf("ERR E02 Invalid CS\r\n"); return;
             }
             printf("OK CS set to %d\r\n", cs);
+            // CS 选择不需要重新初始化
+        }
+        // 配置改变时重新初始化 SPI 硬件
+        if (config_changed) {
+            ipc_cmd_t cmd = {
+                .cmd = IPC_CMD_CONFIG,
+                .protocol = PROTO_SPI,
+                .data_len = 0,
+                .param = 0
+            };
+            fifo_ipc_send_cmd(&cmd);
+            ipc_resp_t resp;
+            fifo_ipc_recv_resp(&resp);
         }
     }
     else if (strcmp(subcmd, "transfer") == 0 && argc > 2) {
@@ -525,6 +609,56 @@ static void cmd_spi(int argc, char *argv[]) {
         }
         mutex_exit(&g_shared_buf_mutex);
     }
+    else if (strcmp(subcmd, "write") == 0 && argc > 2) {
+        mutex_enter_blocking(&g_shared_buf_mutex);
+        int data_len = 0;
+        for (int i = 2; i < argc && data_len < DATA_BUFFER_SIZE; i++) {
+            g_shared_tx_buf[data_len++] = parse_number(argv[i]);
+        }
+
+        ipc_cmd_t cmd = {
+            .cmd = IPC_CMD_SPI_WRITE,
+            .protocol = PROTO_SPI,
+            .data_len = data_len,
+            .param = g_state.spi.cs_pin
+        };
+        fifo_ipc_send_cmd(&cmd);
+
+        ipc_resp_t resp;
+        if (fifo_ipc_recv_resp(&resp)) {
+            if (resp.status == ERR_OK) {
+                printf("OK Sent %d bytes\r\n", data_len);
+            } else {
+                printf("ERR E03 Write failed\r\n");
+            }
+        }
+        mutex_exit(&g_shared_buf_mutex);
+    }
+    else if (strcmp(subcmd, "read") == 0 && argc > 2) {
+        uint16_t len = parse_number(argv[2]);
+        if (len > DATA_BUFFER_SIZE) len = DATA_BUFFER_SIZE;
+
+        ipc_cmd_t cmd = {
+            .cmd = IPC_CMD_SPI_READ,
+            .protocol = PROTO_SPI,
+            .data_len = 0,
+            .param = g_state.spi.cs_pin | (len << 8)
+        };
+        fifo_ipc_send_cmd(&cmd);
+
+        ipc_resp_t resp;
+        if (fifo_ipc_recv_resp(&resp)) {
+            if (resp.status == ERR_OK) {
+                printf("OK ");
+                for (int i = 0; i < resp.data_len; i++) {
+                    printf("%02X ", g_shared_rx_buf[i]);
+                }
+                printf("\r\n");
+            } else {
+                printf("ERR E03 Read failed\r\n");
+            }
+        }
+    }
     else {
         printf("ERR E02 Unknown SPI subcommand: %s\r\n", subcmd);
     }
@@ -553,6 +687,7 @@ static void cmd_uart(int argc, char *argv[]) {
         }
         if (strcmp(argv[2], "baud") == 0 && argc > 3) {
             g_state.uart.baudrate = parse_number(argv[3]);
+            uart_pio_set_baudrate(g_state.uart.baudrate);
             printf("OK Baudrate set to %lu\r\n", g_state.uart.baudrate);
         }
     }
@@ -601,6 +736,74 @@ static void cmd_uart(int argc, char *argv[]) {
             }
         }
         mutex_exit(&g_shared_buf_mutex);
+    }
+    else if (strcmp(subcmd, "recv") == 0) {
+        // uart recv [timeout_ms]
+        uint32_t timeout = (argc > 2) ? parse_number(argv[2]) : 1000;
+
+        ipc_cmd_t cmd = {
+            .cmd = IPC_CMD_UART_RECV,
+            .protocol = PROTO_UART,
+            .data_len = 0,
+            .param = timeout
+        };
+        fifo_ipc_send_cmd(&cmd);
+
+        ipc_resp_t resp;
+        if (fifo_ipc_recv_resp(&resp)) {
+            if (resp.status == ERR_OK && resp.data_len > 0) {
+                printf("OK ");
+                for (int i = 0; i < resp.data_len; i++) {
+                    printf("%02X ", g_shared_rx_buf[i]);
+                }
+                printf("\r\n");
+            } else if (resp.data_len == 0) {
+                printf("OK No data received\r\n");
+            } else {
+                printf("ERR E05 Timeout\r\n");
+            }
+        }
+    }
+    else if (strcmp(subcmd, "bridge") == 0) {
+        // uart bridge [--hex]
+        bool hex_mode = false;
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "--hex") == 0 || strcmp(argv[i], "-x") == 0) {
+                hex_mode = true;
+            }
+        }
+
+        printf("--- UART Bridge Mode (Ctrl+] x3 to exit) ---\r\n");
+        printf("--- Baudrate: %lu, Data: %d%c%d ---\r\n",
+            g_state.uart.baudrate,
+            g_state.uart.data_bits,
+            g_state.uart.parity == 0 ? 'N' : (g_state.uart.parity == 1 ? 'E' : 'O'),
+            g_state.uart.stop_bits);
+        if (hex_mode) {
+            printf("--- HEX display mode ---\r\n");
+        }
+
+        g_state.stream_hex = hex_mode;
+        g_state.stream_mode = STREAM_UART_BRIDGE;
+        // 主循环会处理流模式，此函数返回后不需要打印提示符
+    }
+    else if (strcmp(subcmd, "monitor") == 0) {
+        // uart monitor [--hex]
+        bool hex_mode = false;
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "--hex") == 0 || strcmp(argv[i], "-x") == 0) {
+                hex_mode = true;
+            }
+        }
+
+        printf("--- UART Monitor Mode (Ctrl+] x3 to exit) ---\r\n");
+        printf("--- Baudrate: %lu ---\r\n", g_state.uart.baudrate);
+        if (hex_mode) {
+            printf("--- HEX display mode ---\r\n");
+        }
+
+        g_state.stream_hex = hex_mode;
+        g_state.stream_mode = STREAM_UART_MONITOR;
     }
     else {
         printf("ERR E02 Unknown UART subcommand: %s\r\n", subcmd);

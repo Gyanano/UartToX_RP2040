@@ -53,6 +53,7 @@ target_link_libraries(uart_to_x
     hardware_i2c
     hardware_spi
     hardware_clocks
+    hardware_watchdog
 )
 
 # 使用 USB 作为 stdio

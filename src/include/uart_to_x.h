@@ -97,6 +97,15 @@ typedef enum {
 } transfer_mode_t;
 
 // ============================================================================
+// 流模式类型 (用于 UART bridge/monitor)
+// ============================================================================
+typedef enum {
+    STREAM_NONE         = 0,    // 正常 Shell 模式
+    STREAM_UART_BRIDGE  = 1,    // UART 透传模式 (双向)
+    STREAM_UART_MONITOR = 2,    // UART 监听模式 (只收)
+} stream_mode_t;
+
+// ============================================================================
 // 协议类型
 // ============================================================================
 typedef enum {
@@ -168,6 +177,8 @@ typedef struct {
 #define IPC_CMD_SPI_READ        0x12
 #define IPC_CMD_UART_SEND       0x20
 #define IPC_CMD_UART_RECV       0x21
+#define IPC_CMD_UART_STREAM_TX  0x22    // 流模式单字节发送
+#define IPC_CMD_UART_STREAM_RX  0x23    // 流模式轮询接收
 #define IPC_CMD_GPIO_WRITE      0x30
 #define IPC_CMD_GPIO_READ       0x31
 #define IPC_CMD_CONFIG          0xF0
@@ -183,6 +194,9 @@ typedef struct {
     spi_config_t    spi;
     uart_config_t   uart;
     bool            running;
+    // 流模式状态
+    stream_mode_t   stream_mode;    // 当前流模式
+    bool            stream_hex;     // 流模式是否显示十六进制
 } system_state_t;
 
 extern system_state_t g_state;
@@ -224,6 +238,9 @@ void spi_pio_cs_deselect(void);
 void uart_pio_init(void);
 int  uart_pio_send(const uint8_t *data, size_t len);
 int  uart_pio_recv(uint8_t *data, size_t max_len, uint32_t timeout_ms);
+void uart_pio_set_baudrate(uint32_t baudrate);
+int  uart_pio_recv_available(void);  // 检查是否有数据可读 (非阻塞)
+int  uart_pio_recv_byte(void);       // 读取一个字节 (非阻塞, 无数据返回-1)
 
 // GPIO 函数
 void gpio_ctrl_init(void);

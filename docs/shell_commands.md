@@ -29,6 +29,7 @@ Available commands:
   help       Show help information
   info       Show system information
   reset      Reset system
+  bootsel    Enter BOOTSEL mode for flash
   mode       Set transfer mode
   i2c        I2C operations
   spi        SPI operations
@@ -52,6 +53,16 @@ Mode: TEXT
 ```shell
 > reset             # 软复位
 > reset factory     # 恢复出厂设置
+```
+
+### bootsel - 进入烧录模式
+进入 BOOTSEL 模式，设备会变成 USB 存储设备，可直接拖入 uf2 固件烧录。
+无需手动按住 BOOTSEL 按钮重新插拔。
+```shell
+> bootsel
+Entering BOOTSEL mode...
+Device will appear as USB drive.
+# 设备变成 RPI-RP2 U盘，拖入 uart_to_x.uf2 即可烧录
 ```
 
 ### mode - 传输模式
@@ -133,6 +144,19 @@ OK
 OK 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D
 ```
 
+### i2c dump - 寄存器转储
+以表格形式显示设备的寄存器内容。
+```shell
+# 格式: i2c dump <addr> [start_reg] [len]
+> i2c dump 0x68
+     0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+00: 68 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+10: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+...
+
+> i2c dump 0x68 0x3B 16    # 从寄存器 0x3B 开始读取 16 字节
+```
+
 ---
 
 ## 3. SPI 命令
@@ -162,6 +186,22 @@ SPI 全双工传输，写入同时读取。
 OK EF 40 18 00
 ```
 
+### spi write - 只写数据
+只发送数据，不关心返回。
+```shell
+# 格式: spi write <data...>
+> spi write 0x06              # 发送 Write Enable 命令
+OK Sent 1 bytes
+```
+
+### spi read - 只读数据
+只读取数据（发送 0xFF 作为时钟）。
+```shell
+# 格式: spi read <len>
+> spi read 4
+OK FF FF FF FF
+```
+
 ---
 
 ## 4. UART 命令
@@ -187,6 +227,57 @@ OK Sent 5 bytes
 > uart send "Hello World\r\n"
 OK Sent 13 bytes
 ```
+
+### uart recv - 接收数据
+```shell
+# 格式: uart recv [timeout_ms]
+> uart recv                  # 默认 1000ms 超时
+OK 48 65 6C 6C 6F           # 收到 "Hello"
+
+> uart recv 5000             # 5 秒超时
+OK No data received
+```
+
+### uart bridge - 透传模式
+进入双向透传模式，键盘输入直接发送到 UART TX，UART RX 接收的数据实时显示。
+适合与其他设备进行交互式通信。
+```shell
+# 格式: uart bridge [--hex]
+> uart bridge
+--- UART Bridge Mode (Ctrl+] x3 to exit) ---
+--- Baudrate: 115200, Data: 8N1 ---
+Hello from device!          ← 从 UART 收到的数据
+Hi there!                   ← 你输入的，直接发送到 UART
+Response received           ← 从 UART 收到的数据
+--- Exited bridge mode ---
+>
+
+# 十六进制显示模式
+> uart bridge --hex
+--- UART Bridge Mode (Ctrl+] x3 to exit) ---
+--- HEX display mode ---
+48 65 6C 6C 6F              ← 显示十六进制而非字符
+```
+
+**退出方式**: 连续按三次 `Ctrl+]`
+
+### uart monitor - 监听模式
+进入只读监听模式，只显示 UART RX 收到的数据，不发送任何数据。
+适合数据抓包和日志监控。
+```shell
+# 格式: uart monitor [--hex]
+> uart monitor
+--- UART Monitor Mode (Ctrl+] x3 to exit) ---
+--- Baudrate: 115200 ---
+[设备持续输出的数据会实时显示在这里]
+--- Exited monitor mode ---
+>
+
+# 十六进制显示模式
+> uart monitor --hex
+```
+
+**退出方式**: 连续按三次 `Ctrl+]`
 
 ---
 

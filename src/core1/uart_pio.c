@@ -96,3 +96,23 @@ void uart_pio_set_baudrate(uint32_t baudrate) {
     pio_sm_set_clkdiv(uart_pio, uart_tx_sm, div);
     pio_sm_set_clkdiv(uart_pio, uart_rx_sm, div);
 }
+
+/**
+ * 检查是否有数据可读 (非阻塞)
+ */
+int uart_pio_recv_available(void) {
+    if (!uart_initialized) return 0;
+    return !pio_sm_is_rx_fifo_empty(uart_pio, uart_rx_sm);
+}
+
+/**
+ * 读取一个字节 (非阻塞)
+ * 返回: 读取的字节 (0-255), 或 -1 表示无数据
+ */
+int uart_pio_recv_byte(void) {
+    if (!uart_initialized) return -1;
+    if (pio_sm_is_rx_fifo_empty(uart_pio, uart_rx_sm)) {
+        return -1;
+    }
+    return pio_sm_get(uart_pio, uart_rx_sm) & 0xFF;
+}
