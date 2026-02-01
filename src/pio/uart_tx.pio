@@ -1,16 +1,15 @@
 ; UART TX PIO 程序
-; 8N1 格式
+; 8N1 格式，每位 8 周期
 
 .program uart_tx
 .side_set 1 opt
 
 .wrap_target
-    pull block          side 1
-    set x, 7            side 0  [7]
+    pull block          side 1  [7]   ; 等待数据，保持高电平（停止位/空闲），8 周期
+    set x, 7            side 0  [7]   ; 起始位（低电平），8 周期
 bitloop:
-    out pins, 1                 [6]
-    jmp x-- bitloop             [6]
-    nop                 side 1  [6]
+    out pins, 1                       ; 输出数据位，1 周期
+    jmp x-- bitloop             [6]   ; 循环，7 周期（每位共 8 周期）
 .wrap
 
 % c-sdk {

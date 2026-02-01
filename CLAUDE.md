@@ -46,12 +46,12 @@ Output: `build/uart_to_x.uf2` - drag to RP2040 in BOOTSEL mode.
 
 | Function | GPIO | Function | GPIO |
 |----------|------|----------|------|
-| I2C0 SDA | GP4  | SPI MISO | GP12 |
-| I2C0 SCL | GP5  | SPI MOSI | GP11 |
-| I2C1 SDA | GP6  | SPI SCK  | GP10 |
+| I2C0 SDA | GP4  | SPI MISO | GP16 |
+| I2C0 SCL | GP5  | SPI MOSI | GP19 |
+| I2C1 SDA | GP6  | SPI SCK  | GP18 |
 | I2C1 SCL | GP7  | SPI CS0  | GP17 |
-| UART TX  | GP0  | GPIO 0-3 | GP11-14 |
-| UART RX  | GP1  | LED      | GP25 |
+| UART TX  | GP8  | GPIO 0-3 | GP11-14 |
+| UART RX  | GP9  | LED      | GP25 |
 
 ## Shell Command Pattern
 

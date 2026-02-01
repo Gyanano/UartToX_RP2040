@@ -32,11 +32,11 @@
 #define PIN_I2C1_SDA    6
 #define PIN_I2C1_SCL    7
 
-// SPI 引脚
+// SPI 引脚 (SPI0: RX=GP16, TX=GP19, SCK=GP18)
 #define PIN_SPI_MISO    16
-#define PIN_SPI_MOSI    17
+#define PIN_SPI_MOSI    19
 #define PIN_SPI_SCK     18
-#define PIN_SPI_CS0     19
+#define PIN_SPI_CS0     17
 #define PIN_SPI_CS1     20
 #define PIN_SPI_CS2     21
 

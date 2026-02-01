@@ -78,7 +78,6 @@ static uint32_t parse_number(const char *str) {
 static int parse_args(char *line, char *argv[], int max_args) {
     int argc = 0;
     char *p = line;
-    bool in_quote = false;
 
     while (*p && argc < max_args) {
         // 跳过空白
@@ -87,9 +86,8 @@ static int parse_args(char *line, char *argv[], int max_args) {
 
         // 处理引号
         if (*p == '"') {
-            in_quote = true;
+            argv[argc++] = p;  // 保留开头引号
             p++;
-            argv[argc++] = p;
             while (*p && *p != '"') p++;
             if (*p == '"') *p++ = '\0';
         } else {

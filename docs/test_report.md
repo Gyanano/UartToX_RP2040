@@ -112,18 +112,18 @@
 
 | 测试项 | 命令 | 预期结果 | 实际结果 | 状态 |
 |--------|------|----------|----------|------|
-| 查看配置 | `spi config` | 显示速度、模式、CS | | 🔄 TODO |
-| 设置速度 | `spi config speed 1000` | OK | | 🔄 TODO |
-| 设置模式0 | `spi config mode 0` | OK | | 🔄 TODO |
-| 设置模式3 | `spi config mode 3` | OK | | 🔄 TODO |
-| 切换CS | `spi config cs 1` | OK | | 🔄 TODO |
+| 查看配置 | `spi config` | 显示速度、模式、CS | | ✅ PASS |
+| 设置速度 | `spi config speed 1000` | OK | | ✅ PASS |
+| 设置模式0 | `spi config mode 0` | OK | | ✅ PASS |
+| 设置模式3 | `spi config mode 3` | OK | | ✅ PASS |
+| 切换CS | `spi config cs 1` | OK | | ✅ PASS |
 
 ### 3.3 SPI 传输
 
 | 测试项 | 命令 | 预期结果 | 实际结果 | 状态 |
 |--------|------|----------|----------|------|
-| 全双工传输 | `spi transfer 0x9F 0x00 0x00 0x00` | OK + 4字节 | | ⚠️ SKIP |
-| 只写数据 | `spi write 0x06` | OK Sent 1 bytes | | ⚠️ SKIP |
+| 全双工传输 | `spi transfer 0x9F 0x00 0x00 0x00` | OK + 4字节 | | ✅ PASS |
+| 只写数据 | `spi write 0x06` | OK Sent 1 bytes | | ✅ PASS |
 | 只读数据 | `spi read 4` | OK + 4字节 | | ⚠️ SKIP |
 
 ---
